@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,14 +23,13 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
-
-import fr.odtgenerator.data.FactureDataProvider;
 
 @ExtendWith(MockitoExtension.class)
 class OdtGeneratorServiceTest {
@@ -42,21 +44,39 @@ class OdtGeneratorServiceTest {
 	@InjectMocks
 	private OdtGeneratorService service;
 
-	private byte[] odt;
+	@TempDir
+	private Path tempDir;
+
 	private Map<String, byte[]> entries;
 	private List<ZipEntry> zipEntries;
 
 	@BeforeEach
 	void generer() throws IOException {
-		odt = service.genererEnOctets(TEMPLATE,
-				Map.of("facture", new FactureDataProvider().getFacture()));
+		// Modèle saisi directement (Map/List), indépendamment des classes du package model :
+		// montant et total sont donc fournis tels quels, le test ne valide que le remplissage du template.
+		Object modele = Map.of("facture", Map.of(
+				"numero", "F-2026-0042",
+				"date", LocalDate.of(2026, 11, 20),
+				"client", Map.of(
+						"nom", "Dupont & Fils",
+						"adresse", "12 rue des Lilas",
+						"codePostal", "75011",
+						"ville", "Paris"),
+				"lignes", List.of(
+						ligne("Développement module ODT", 3, "450.00", "1350.00"),
+						ligne("Recette fonctionnelle", 1, "300.00", "300.00"),
+						ligne("Licence <support> annuel", 2, "125.50", "251.00")),
+				"total", new BigDecimal("1901.00")));
 
-		// Conservé pour pouvoir ouvrir le résultat dans LibreOffice
-		Files.write(Path.of("target", "document-test.odt"), odt);
+		// Fichier temporaire, supprimé automatiquement par JUnit à la fin du test
+		Path odt = tempDir.resolve("document-test.odt");
+		try (OutputStream out = Files.newOutputStream(odt)) {
+			service.generer(TEMPLATE, modele, out);
+		}
 
 		entries = new LinkedHashMap<>();
 		zipEntries = new ArrayList<>();
-		try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(odt))) {
+		try (ZipInputStream zin = new ZipInputStream(Files.newInputStream(odt))) {
 			ZipEntry e;
 			while ((e = zin.getNextEntry()) != null) {
 				zipEntries.add(e);
@@ -131,6 +151,14 @@ class OdtGeneratorServiceTest {
 		assertThatThrownBy(() -> service.genererEnOctets(TEMPLATE, Map.of()))
 				.isInstanceOf(OdtGenerationException.class)
 				.hasMessageContaining("facture");
+	}
+
+	private static Map<String, Object> ligne(String designation, int quantite, String prixUnitaire, String montant) {
+		return Map.of(
+				"designation", designation,
+				"quantite", quantite,
+				"prixUnitaire", new BigDecimal(prixUnitaire),
+				"montant", new BigDecimal(montant));
 	}
 
 	private Document parse(String entry) throws Exception {

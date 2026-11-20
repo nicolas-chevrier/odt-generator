@@ -6,7 +6,7 @@ et d'un modèle de données (en dur pour le moment : `FactureDataProvider`), ave
 ## Lancer
 
 ```bash
-mvnw test             # tests unitaires (le résultat est écrit dans target/document-test.odt)
+mvnw test             # tests unitaires (le document est généré dans un dossier temporaire, supprimé après le test)
 mvnw spring-boot:run  # génère target/document-genere.odt (propriété odt.output pour changer le chemin)
 ```
 
