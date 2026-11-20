@@ -17,31 +17,42 @@ import java.util.zip.ZipInputStream;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import fr.odtgenerator.data.FactureDataProvider;
 
+@ExtendWith(MockitoExtension.class)
 class OdtGeneratorServiceTest {
 
 	private static final String TEXT_NS = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
 	private static final String TABLE_NS = "urn:oasis:names:tc:opendocument:xmlns:table:1.0";
 
-	private static byte[] odt;
-	private static Map<String, byte[]> entries;
-	private static List<ZipEntry> zipEntries;
+	/** Template lu dans src/test/resources/templates/template.odt. */
+	private static final String TEMPLATE = "templates/template.odt";
 
-	@BeforeAll
-	static void generer() throws IOException {
-		OdtGeneratorService service = new OdtGeneratorService();
-		odt = service.genererEnOctets("templates/facture.odt",
+	/** Le service n'a aucune dépendance : Mockito l'instancie simplement via son constructeur. */
+	@InjectMocks
+	private OdtGeneratorService service;
+
+	private byte[] odt;
+	private Map<String, byte[]> entries;
+	private List<ZipEntry> zipEntries;
+
+	@BeforeEach
+	void generer() throws IOException {
+		odt = service.genererEnOctets(TEMPLATE,
 				Map.of("facture", new FactureDataProvider().getFacture()));
 
 		// Conservé pour pouvoir ouvrir le résultat dans LibreOffice
-		Files.write(Path.of("target", "facture-test.odt"), odt);
+		Files.write(Path.of("target", "document-test.odt"), odt);
 
 		entries = new LinkedHashMap<>();
 		zipEntries = new ArrayList<>();
@@ -52,6 +63,13 @@ class OdtGeneratorServiceTest {
 				entries.put(e.getName(), zin.readAllBytes());
 			}
 		}
+	}
+
+	@Test
+	void utiliseLeTemplateDesRessourcesDeTest() throws IOException {
+		// src/test/resources (target/test-classes) passe avant src/main/resources dans le classpath de test
+		assertThat(new ClassPathResource(TEMPLATE).getURL().toString())
+				.endsWith("/test-classes/" + TEMPLATE);
 	}
 
 	@Test
@@ -110,13 +128,12 @@ class OdtGeneratorServiceTest {
 
 	@Test
 	void signaleUneVariableAbsenteDuModele() {
-		OdtGeneratorService service = new OdtGeneratorService();
-		assertThatThrownBy(() -> service.genererEnOctets("templates/facture.odt", Map.of()))
+		assertThatThrownBy(() -> service.genererEnOctets(TEMPLATE, Map.of()))
 				.isInstanceOf(OdtGenerationException.class)
 				.hasMessageContaining("facture");
 	}
 
-	private static Document parse(String entry) throws Exception {
+	private Document parse(String entry) throws Exception {
 		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		factory.setNamespaceAware(true);
 		return factory.newDocumentBuilder().parse(new ByteArrayInputStream(entries.get(entry)));

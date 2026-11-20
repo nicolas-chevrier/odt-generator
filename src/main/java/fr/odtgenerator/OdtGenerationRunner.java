@@ -27,7 +27,7 @@ public class OdtGenerationRunner implements CommandLineRunner {
 	private final Path output;
 
 	public OdtGenerationRunner(OdtGeneratorService generator, FactureDataProvider dataProvider,
-			@Value("${odt.output:target/facture-generee.odt}") Path output) {
+			@Value("${odt.output:target/document-genere.odt}") Path output) {
 		this.generator = generator;
 		this.dataProvider = dataProvider;
 		this.output = output;
@@ -39,7 +39,7 @@ public class OdtGenerationRunner implements CommandLineRunner {
 			Files.createDirectories(output.getParent());
 		}
 		try (OutputStream out = Files.newOutputStream(output)) {
-			generator.generer("templates/facture.odt", Map.of("facture", dataProvider.getFacture()), out);
+			generator.generer("templates/template.odt", Map.of("facture", dataProvider.getFacture()), out);
 		}
 		LOG.info("Document généré : {}", output.toAbsolutePath());
 	}

@@ -1,13 +1,13 @@
 # odt-generator
 
-Génère un document `.odt` à partir d'un template ODT (`src/main/resources/templates/facture.odt`)
+Génère un document `.odt` à partir d'un template ODT (`src/main/resources/templates/template.odt`)
 et d'un modèle de données (en dur pour le moment : `FactureDataProvider`), avec FreeMarker.
 
 ## Lancer
 
 ```bash
-mvnw test             # tests unitaires (le résultat est écrit dans target/facture-test.odt)
-mvnw spring-boot:run  # génère target/facture-generee.odt (propriété odt.output pour changer le chemin)
+mvnw test             # tests unitaires (le résultat est écrit dans target/document-test.odt)
+mvnw spring-boot:run  # génère target/document-genere.odt (propriété odt.output pour changer le chemin)
 ```
 
 ## Principe
