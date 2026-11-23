@@ -12,13 +12,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.CRC32;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -34,11 +29,11 @@ import freemarker.template.TemplateModelException;
 import freemarker.template.utility.DeepUnwrap;
 
 /**
- * Génère un document ODT à partir d'un template ODT contenant des expressions FreeMarker.
+ * Génère un document ODT à partir d'un template FODT (ODT « à plat » : un seul fichier XML,
+ * enregistrable depuis LibreOffice) contenant des expressions FreeMarker.
  * <p>
- * Un fichier ODT est une archive ZIP : seuls les fichiers XML portant le texte du document
- * ({@code content.xml}, {@code styles.xml} pour les en-têtes/pieds de page) sont passés dans
- * FreeMarker, les autres entrées (images, manifest...) sont recopiées telles quelles.
+ * Le template entier passe dans FreeMarker, puis le XML obtenu est découpé en archive ODT
+ * ({@code content.xml}, {@code styles.xml}, images...) par {@link FodtVersOdt}.
  * <p>
  * Syntaxe utilisable dans le template (saisie directement dans LibreOffice Writer) :
  * <ul>
@@ -51,9 +46,6 @@ import freemarker.template.utility.DeepUnwrap;
  */
 @Service
 public class OdtGeneratorService {
-
-	private static final String MIMETYPE_ENTRY = "mimetype";
-	private static final Set<String> TEMPLATED_ENTRIES = Set.of("content.xml", "styles.xml");
 
 	private static final Pattern TABLE_ROW = Pattern.compile("<table:table-row\\b[^>]*>.*?</table:table-row>",
 			Pattern.DOTALL);
@@ -92,7 +84,7 @@ public class OdtGeneratorService {
 	}
 
 	/**
-	 * @param templatePath chemin du template ODT dans le classpath
+	 * @param templatePath chemin du template FODT dans le classpath
 	 * @param model        modèle de données exposé au template
 	 * @param out          flux recevant le document ODT généré (non fermé par cette méthode)
 	 */
@@ -104,30 +96,26 @@ public class OdtGeneratorService {
 		}
 	}
 
+	/**
+	 * @param templateName nom du template (utilisé dans les messages d'erreur)
+	 * @param template     contenu du template FODT (XML UTF-8)
+	 */
 	public void generer(String templateName, InputStream template, Object model, OutputStream out) {
-		try (ZipInputStream zin = new ZipInputStream(template, StandardCharsets.UTF_8)) {
-			ZipOutputStream zout = new ZipOutputStream(out, StandardCharsets.UTF_8);
-			ZipEntry entry;
-			while ((entry = zin.getNextEntry()) != null) {
-				byte[] data = zin.readAllBytes();
-				if (TEMPLATED_ENTRIES.contains(entry.getName())) {
-					data = appliquerTemplate(templateName + "!" + entry.getName(), data, model);
-				}
-				ecrireEntree(zout, entry.getName(), data);
-			}
-			zout.finish();
+		try {
+			String fodt = new String(template.readAllBytes(), StandardCharsets.UTF_8);
+			FodtVersOdt.convertir(appliquerTemplate(templateName, fodt, model), out);
 		} catch (IOException e) {
 			throw new UncheckedIOException("Génération ODT impossible depuis " + templateName, e);
 		}
 	}
 
-	private byte[] appliquerTemplate(String name, byte[] xml, Object model) throws IOException {
-		String source = deplacerDirectivesDeLigne(new String(xml, StandardCharsets.UTF_8));
+	private String appliquerTemplate(String name, String fodt, Object model) throws IOException {
+		String source = deplacerDirectivesDeLigne(fodt);
 		try {
 			Template template = new Template(name, new StringReader(source), freemarker);
 			StringWriter result = new StringWriter(source.length());
 			template.process(model, result);
-			return result.toString().getBytes(StandardCharsets.UTF_8);
+			return result.toString();
 		} catch (TemplateException e) {
 			throw new OdtGenerationException("Erreur FreeMarker dans " + name + " : " + e.getMessage(), e);
 		}
@@ -158,22 +146,6 @@ public class OdtGeneratorService {
 			directives.append(m.group(1));
 		}
 		return m.replaceAll("");
-	}
-
-	/** L'entrée "mimetype" doit être la première de l'archive et non compressée (norme ODF). */
-	private static void ecrireEntree(ZipOutputStream zout, String name, byte[] data) throws IOException {
-		ZipEntry out = new ZipEntry(name);
-		if (MIMETYPE_ENTRY.equals(name)) {
-			CRC32 crc = new CRC32();
-			crc.update(data);
-			out.setMethod(ZipEntry.STORED);
-			out.setSize(data.length);
-			out.setCompressedSize(data.length);
-			out.setCrc(crc.getValue());
-		}
-		zout.putNextEntry(out);
-		zout.write(data);
-		zout.closeEntry();
 	}
 
 	/** Génère dans un tableau d'octets (pratique pour un retour HTTP ou un test). */

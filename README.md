@@ -1,7 +1,8 @@
 # odt-generator
 
-Génère un document `.odt` à partir d'un template ODT (`src/main/resources/templates/template.odt`)
+Génère un document `.odt` à partir d'un template FODT (`src/main/resources/templates/template.fodt`)
 et d'un modèle de données (en dur pour le moment : `FactureDataProvider`), avec FreeMarker.
+Les tests utilisent leur propre copie : `src/test/resources/templates/template.fodt`.
 
 ## Lancer
 
@@ -12,9 +13,20 @@ mvnw spring-boot:run  # génère target/document-genere.odt (propriété odt.out
 
 ## Principe
 
-Un `.odt` est une archive ZIP. `OdtGeneratorService` ouvre le template, passe `content.xml`
-et `styles.xml` (en-têtes/pieds de page) dans FreeMarker, recopie les autres entrées
-(images, manifest...) et réécrit l'archive en plaçant `mimetype` en premier, non compressé (norme ODF).
+Le template est un **ODT « à plat »** (`.fodt`) : un seul fichier XML contenant texte, styles,
+en-têtes/pieds de page, métadonnées et images (en base64). Il se lit et se compare (`git diff`)
+comme n'importe quel fichier texte.
+
+1. `OdtGeneratorService` passe le template entier dans FreeMarker.
+2. `FodtVersOdt` découpe le XML obtenu en archive `.odt` : `content.xml`, `styles.xml`, `meta.xml`,
+   `settings.xml`, images décodées dans `Pictures/`, `META-INF/manifest.xml`, et `mimetype`
+   en premier, non compressé (norme ODF).
+
+## Modifier le template
+
+Ouvrir `template.fodt` dans LibreOffice Writer, modifier, puis **Enregistrer** en conservant
+le format « Document texte ODF à plat (.fodt) ». Pour repartir d'un `.odt` existant :
+*Fichier > Enregistrer sous > Type : Document texte ODF à plat (.fodt)*.
 
 ## Syntaxe dans le template (à taper dans LibreOffice Writer)
 
@@ -33,3 +45,5 @@ et `styles.xml` (en-têtes/pieds de page) dans FreeMarker, recopie les autres en
   En cas de doute, sélectionner l'expression et faire *Format > Effacer le formatage direct*.
 - Désactiver l'autocorrection des guillemets (`"` → `« »`) qui casse les chaînes FreeMarker.
 - Éviter `>` / `<` dans les conditions (LibreOffice les écrit `&gt;` / `&lt;`) : utiliser `gt`, `lt`, `gte`, `lte`.
+- Désactiver le suivi des modifications (*Édition > Suivi des modifications*) : le texte supprimé
+  reste sinon dans le fichier, avec ses anciennes variables.

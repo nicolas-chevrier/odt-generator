@@ -39,7 +39,7 @@ public class OdtGenerationRunner implements CommandLineRunner {
 			Files.createDirectories(output.getParent());
 		}
 		try (OutputStream out = Files.newOutputStream(output)) {
-			generator.generer("templates/template.odt", Map.of("facture", dataProvider.getFacture()), out);
+			generator.generer("templates/template.fodt", Map.of("facture", dataProvider.getFacture()), out);
 		}
 		LOG.info("Document généré : {}", output.toAbsolutePath());
 	}
