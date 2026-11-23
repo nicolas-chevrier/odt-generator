@@ -22,6 +22,7 @@ import java.util.zip.ZipOutputStream;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import freemarker.core.ParseException;
 import freemarker.core.XMLOutputFormat;
 import freemarker.template.Configuration;
 import freemarker.template.Template;
@@ -128,15 +129,44 @@ public class OdtGeneratorService {
 	}
 
 	private byte[] appliquerTemplate(String name, byte[] xml, Object model) throws IOException {
-		String source = deplacerDirectivesDeLigne(new String(xml, StandardCharsets.UTF_8));
+		String source = deplacerDirectivesDeLigne(NettoyageExpressions.nettoyer(new String(xml, StandardCharsets.UTF_8)));
 		try {
 			Template template = new Template(name, new StringReader(source), freemarker);
 			StringWriter result = new StringWriter(source.length());
 			template.process(model, result);
 			return result.toString().getBytes(StandardCharsets.UTF_8);
+		} catch (ParseException e) {
+			throw new OdtGenerationException(messageErreur("Syntaxe FreeMarker invalide", name, e.getMessage(),
+					source, e.getLineNumber(), e.getColumnNumber()), e);
 		} catch (TemplateException e) {
-			throw new OdtGenerationException("Erreur FreeMarker dans " + name + " : " + e.getMessage(), e);
+			throw new OdtGenerationException(messageErreur("Erreur FreeMarker", name, e.getMessage(),
+					source, e.getLineNumber(), e.getColumnNumber()), e);
 		}
+	}
+
+	/** Message d'erreur complété par l'extrait du XML où se situe l'erreur. */
+	static String messageErreur(String type, String name, String detail, String source, Integer ligne,
+			Integer colonne) {
+		String message = type + " dans " + name + " : " + detail;
+		String extrait = extrait(source, ligne, colonne);
+		return extrait == null ? message : message + System.lineSeparator() + "Près de : " + extrait;
+	}
+
+	private static String extrait(String source, Integer ligne, Integer colonne) {
+		if (ligne == null || colonne == null || ligne < 1 || colonne < 1) {
+			return null;
+		}
+		String[] lignes = source.split("\r?\n", -1);
+		if (ligne > lignes.length) {
+			return null;
+		}
+		String texte = lignes[ligne - 1];
+		// FreeMarker compte une tabulation comme 8 colonnes : approximation suffisante pour un extrait
+		int position = Math.min(colonne - 1, texte.length());
+		int debut = Math.max(0, position - 80);
+		int fin = Math.min(texte.length(), position + 80);
+		return (debut > 0 ? "…" : "") + texte.substring(debut, position) + " ⟶ " + texte.substring(position, fin)
+				+ (fin < texte.length() ? "…" : "");
 	}
 
 	/**

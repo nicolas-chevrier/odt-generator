@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
@@ -74,7 +76,10 @@ class OdtGeneratorServiceTest {
 		try (OutputStream out = Files.newOutputStream(odt)) {
 			service.generer(TEMPLATE, modele, out);
 		}
+		lireArchive(odt);
+	}
 
+	private void lireArchive(Path odt) throws IOException {
 		entries = new LinkedHashMap<>();
 		zipEntries = new ArrayList<>();
 		try (ZipInputStream zin = new ZipInputStream(Files.newInputStream(odt))) {
@@ -171,6 +176,54 @@ class OdtGeneratorServiceTest {
 		assertThatThrownBy(() -> service.genererEnOctets(TEMPLATE, Map.of()))
 				.isInstanceOf(OdtGenerationException.class)
 				.hasMessageContaining("facture");
+	}
+
+	@Test
+	void accepteLesExpressionsTellesQueLibreOfficeLesEnregistre() throws Exception {
+		// Expressions découpées par des <text:span>, guillemets « » de l'autocorrection, ">" échappé
+		String content = CONTENT_DEBUT
+				+ "<text:p>Facture n°${facture.<text:span text:style-name=\"T1\">numero</text:span>}</text:p>"
+				+ "<text:p>Date : ${formatDate(facture.date, « dd/MM/yyyy »)}</text:p>"
+				+ "<text:p>[#if facture.total &gt; 1000]Montant élevé[/#if]</text:p>"
+				+ CONTENT_FIN;
+
+		lireArchive(genererDepuisContent(content, Map.of("facture", Map.of(
+				"numero", "F-1", "date", LocalDate.of(2026, 11, 23), "total", new BigDecimal("1500")))));
+
+		assertThat(textes(parse("content.xml"), TEXT_NS, "p"))
+				.containsExactly("Facture n°F-1", "Date : 23/11/2026", "Montant élevé");
+	}
+
+	@Test
+	void indiqueLExtraitFautifEnCasDErreurDeSyntaxe() {
+		String content = CONTENT_DEBUT + "<text:p>Client : ${facture.client.nom</text:p>" + CONTENT_FIN;
+
+		assertThatThrownBy(() -> genererDepuisContent(content, Map.of()))
+				.isInstanceOf(OdtGenerationException.class)
+				.hasMessageContaining("Syntaxe FreeMarker invalide dans test.odt!content.xml")
+				.hasMessageContaining("Près de : ")
+				.hasMessageContaining("Client : ${facture.client.nom");
+	}
+
+	private static final String CONTENT_DEBUT = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+			+ "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+			+ " xmlns:text=\"" + TEXT_NS + "\" office:version=\"1.3\"><office:body><office:text>";
+	private static final String CONTENT_FIN = "</office:text></office:body></office:document-content>";
+
+	/** Génère un document à partir d'un template minimal en mémoire, contenant uniquement ce content.xml. */
+	private Path genererDepuisContent(String contentXml, Object modele) throws IOException {
+		ByteArrayOutputStream template = new ByteArrayOutputStream();
+		try (ZipOutputStream zip = new ZipOutputStream(template)) {
+			zip.putNextEntry(new ZipEntry("mimetype"));
+			zip.write("application/vnd.oasis.opendocument.text".getBytes(StandardCharsets.US_ASCII));
+			zip.putNextEntry(new ZipEntry("content.xml"));
+			zip.write(contentXml.getBytes(StandardCharsets.UTF_8));
+		}
+		Path odt = tempDir.resolve("test.odt");
+		try (OutputStream out = Files.newOutputStream(odt)) {
+			service.generer("test.odt", new ByteArrayInputStream(template.toByteArray()), modele, out);
+		}
+		return odt;
 	}
 
 	private static Map<String, Object> ligne(String designation, int quantite, String prixUnitaire, String montant) {

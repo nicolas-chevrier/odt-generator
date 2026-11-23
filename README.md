@@ -28,12 +28,20 @@ avec `mimetype` en premier, non compressé (norme ODF).
 | Condition / boucle dans un paragraphe | `[#if ...]...[/#if]`, `[#list ...]...[/#list]` (syntaxe crochets) |
 | Répéter une ligne de tableau | `@before-row[#list facture.lignes as ligne]` dans une cellule de la ligne, `@after-row[/#list]` dans une autre |
 
+## Ce que le service corrige automatiquement
+
+LibreOffice n'enregistre pas toujours une expression telle qu'elle a été tapée. Avant FreeMarker,
+`NettoyageExpressions` reconstitue chaque `${...}` / `[#...]` :
+
+- balises insérées au milieu (`${client.<text:span …>nom</text:span>}`) : sorties de l'expression ;
+- guillemets de l'autocorrection (`« »`, `“ ”`) : remplacés par `"` ;
+- caractères échappés (`&gt;`, `&quot;`...) : décodés, `[#if total > 0]` fonctionne donc ;
+- espaces insécables et `<text:s/>` : remplacés par des espaces.
+
+En cas d'erreur de syntaxe, le message indique l'extrait fautif (`Près de : … ⟶ …`).
+
 ## Points d'attention lors de l'édition du template
 
-- Taper chaque `${...}` d'un seul trait, sans changer la mise en forme au milieu : sinon LibreOffice
-  peut découper l'expression en plusieurs `<text:span>` et FreeMarker ne la reconnaît plus.
-  En cas de doute, sélectionner l'expression et faire *Format > Effacer le formatage direct*.
-- Désactiver l'autocorrection des guillemets (`"` → `« »`) qui casse les chaînes FreeMarker.
-- Éviter `>` / `<` dans les conditions (LibreOffice les écrit `&gt;` / `&lt;`) : utiliser `gt`, `lt`, `gte`, `lte`.
 - Désactiver le suivi des modifications (*Édition > Suivi des modifications*) : le texte supprimé
   reste sinon dans `content.xml`, avec ses anciennes variables.
+- Taper les marqueurs `@before-row` / `@after-row` d'un seul trait (ils ne sont pas reconstitués).
